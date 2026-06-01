@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  generate:
+    desc: Regenerate all mocks
+    cmd: go generate ./...
+
+  test:
+    desc: Run all unit tests
+    cmd: go test ./...
+
+  test:integration:
+    desc: Run integration tests (requires Docker)
+    cmd: go test -tags integration ./...
+
+  vet:
+    desc: Run go vet
+    cmd: go vet ./...
+
+  lint:
+    desc: Run golangci-lint
+    cmd: golangci-lint run ./...
