@@ -6,7 +6,7 @@ import (
 	"io/fs"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5" // register pgx5 driver for golang-migrate
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
 )
@@ -44,7 +44,7 @@ func RunMigrations(ctx context.Context, params *RunMigrationsParams) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close(ctx)
+	defer func() { _ = db.Close(ctx) }()
 
 	migrationsFS, err := iofs.New(params.FS, ".")
 	if err != nil {
@@ -68,7 +68,7 @@ func provisionInitialArtifacts(ctx context.Context, params *RunMigrationsParams)
 	if err != nil {
 		return err
 	}
-	defer db.Close(ctx)
+	defer func() { _ = db.Close(ctx) }()
 
 	// PostgreSQL DDL cannot use bind parameters and has no CREATE ROLE ... IF
 	// NOT EXISTS, so build the statements with format(%I,%L) — %I quotes the

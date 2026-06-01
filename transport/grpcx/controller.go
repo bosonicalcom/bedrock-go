@@ -1,3 +1,4 @@
+// Package grpcx provides gRPC transport primitives, including the Controller interface and health checking.
 package grpcx
 
 import "google.golang.org/grpc"

@@ -24,7 +24,7 @@ func TestTraceIDContext(t *testing.T) {
 		},
 		{
 			name:      "missing on empty context",
-			setup:     func() context.Context { return context.Background() },
+			setup:     context.Background,
 			wantFound: false,
 		},
 		{

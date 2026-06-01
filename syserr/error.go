@@ -58,7 +58,7 @@ type NewOption func(*Error)
 
 // -- Options
 
-// WithDetails appends details to the error. This is useful for adding structured information
+// WithDetails appends details to the error. This is useful for adding structured information.
 func WithDetails(details ...Detail) NewOption {
 	return func(err *Error) {
 		if err.Details == nil {
@@ -93,6 +93,7 @@ func (e Error) Unwrap() error {
 	return nil
 }
 
+// PublicDetails returns the subset of details that are safe to expose to external callers.
 func (e Error) PublicDetails() []Detail {
 	out := make([]Detail, 0, len(e.Details))
 	for i := range e.Details {
@@ -104,6 +105,7 @@ func (e Error) PublicDetails() []Detail {
 	return out
 }
 
+// PrivateDetails returns the subset of details that must not be sent to external callers (e.g. [DebugInfo]).
 func (e Error) PrivateDetails() []Detail {
 	out := make([]Detail, 0, len(e.Details))
 	for i := range e.Details {
@@ -192,6 +194,7 @@ type ErrorInfo struct {
 
 var _ Detail = (*ErrorInfo)(nil)
 
+// DetailType implements [Detail].
 func (e ErrorInfo) DetailType() string {
 	return ErrorInfoType
 }
@@ -211,6 +214,7 @@ type DebugInfo struct {
 
 var _ Detail = (*DebugInfo)(nil)
 
+// DetailType implements [Detail].
 func (d DebugInfo) DetailType() string {
 	return DebugInfoType
 }
@@ -227,6 +231,7 @@ type LocalizedMessage struct {
 
 var _ Detail = (*LocalizedMessage)(nil)
 
+// DetailType implements [Detail].
 func (l LocalizedMessage) DetailType() string {
 	return LocalizedMessageType
 }
@@ -243,6 +248,7 @@ type BadRequest struct {
 
 var _ Detail = (*BadRequest)(nil)
 
+// DetailType implements [Detail].
 func (b BadRequest) DetailType() string {
 	return BadRequestType
 }
@@ -275,6 +281,7 @@ type PreconditionFailure struct {
 
 var _ Detail = (*PreconditionFailure)(nil)
 
+// DetailType implements [Detail].
 func (p PreconditionFailure) DetailType() string {
 	return PreconditionFailureType
 }
@@ -299,6 +306,7 @@ type QuotaFailure struct {
 
 var _ Detail = (*QuotaFailure)(nil)
 
+// DetailType implements [Detail].
 func (q QuotaFailure) DetailType() string {
 	return QuotaFailureType
 }
@@ -321,6 +329,7 @@ type RetryInfo struct {
 
 var _ Detail = (*RetryInfo)(nil)
 
+// DetailType implements [Detail].
 func (r RetryInfo) DetailType() string {
 	return RetryInfoType
 }
@@ -341,6 +350,7 @@ type ResourceInfo struct {
 
 var _ Detail = (*ResourceInfo)(nil)
 
+// DetailType implements [Detail].
 func (r ResourceInfo) DetailType() string {
 	return ResourceInfoType
 }
@@ -357,6 +367,7 @@ type RequestInfo struct {
 
 var _ Detail = (*RequestInfo)(nil)
 
+// DetailType implements [Detail].
 func (r RequestInfo) DetailType() string {
 	return RequestInfoType
 }
@@ -371,6 +382,7 @@ type Help struct {
 
 var _ Detail = (*Help)(nil)
 
+// DetailType implements [Detail].
 func (h Help) DetailType() string {
 	return HelpType
 }

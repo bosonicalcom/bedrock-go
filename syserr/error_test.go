@@ -53,13 +53,13 @@ func TestNew_WithCauses(t *testing.T) {
 
 	require.Len(t, err.Causes, 2)
 	unwrapped := err.Unwrap()
-	require.NotNil(t, unwrapped)
-	assert.ErrorIs(t, unwrapped, cause1)
-	assert.ErrorIs(t, unwrapped, cause2)
+	require.Error(t, unwrapped)
+	require.ErrorIs(t, unwrapped, cause1)
+	require.ErrorIs(t, unwrapped, cause2)
 }
 
 func TestError_Unwrap_NoCauses(t *testing.T) {
-	assert.Nil(t, syserr.New(syserr.CodeUnknown, "bare").Unwrap())
+	assert.NoError(t, syserr.New(syserr.CodeUnknown, "bare").Unwrap())
 }
 
 func TestError_StringMethods(t *testing.T) {

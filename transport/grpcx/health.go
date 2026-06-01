@@ -12,9 +12,7 @@ type HealthController struct {
 	healthSrv *health.Server
 }
 
-var (
-	_ Controller = (*HealthController)(nil)
-)
+var _ Controller = (*HealthController)(nil)
 
 // NewHealthController creates a HealthController whose global serving status is
 // set to SERVING immediately, making it safe to register before the server starts.

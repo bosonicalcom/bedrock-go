@@ -13,9 +13,7 @@ import (
 	"github.com/bosonicalcom/bedrock-go/syserr"
 )
 
-var (
-	_tagNames = []string{"json", "env", "yaml", "toml", "xml"}
-)
+var _tagNames = []string{"json", "env", "yaml", "toml", "xml"}
 
 // GoPlaygroundValidate creates a new validator instance with no extra options.
 //
@@ -39,13 +37,9 @@ func GoPlaygroundValidate() *validator.Validate {
 
 // GoPlaygroundValidator is a struct that implements the Validator interface, acting like an adapter to the Go
 // Playground Validator, translating validation errors into the syserr system errors.
-type GoPlaygroundValidator struct {
-}
+type GoPlaygroundValidator struct{}
 
-var (
-	// compile-time assertions
-	_ Validator = (*GoPlaygroundValidator)(nil)
-)
+var _ Validator = (*GoPlaygroundValidator)(nil)
 
 // Validate implements [Validator] by running the Go Playground validator against v
 // and translating any [validator.ValidationErrors] into a [syserr.Error] with
@@ -66,10 +60,6 @@ func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
 	violations := make([]syserr.FieldViolation, 0, len(validationErrs))
 	for _, validationErr := range validationErrs {
 		// localeMsgKey := fmt.Sprintf("global.errors.field_validations.%s", validationErr.Tag())
-		if validationErr.Kind() == reflect.String && (validationErr.Tag() == "lte" || validationErr.Tag() == "gte" || validationErr.Tag() == "gt" || validationErr.Tag() == "lt") {
-			// show proper messages for string/container (map, slice, etc.) fields length assertions
-			// localeMsgKey = fmt.Sprintf("global.errors.field_validations.%slen", validationErr.Tag())
-		}
 		fieldNameSplit := strings.Split(validationErr.Namespace(), ".")
 		var fieldName string
 		if len(fieldNameSplit) <= 1 {

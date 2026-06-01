@@ -66,8 +66,8 @@ func (s *GoPlaygroundValidatorSuite) TestValidate_FieldViolations() {
 			s.Require().Error(err)
 			s.True(syserr.Is(err, syserr.CodeInvalidArgument))
 
-			se, ok := err.(*syserr.Error)
-			s.Require().True(ok)
+			var se *syserr.Error
+			s.Require().ErrorAs(err, &se)
 
 			var br syserr.BadRequest
 			found := false

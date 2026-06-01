@@ -1,3 +1,4 @@
+// Package logx provides slog handler extensions, including interceptor-based enrichment of log records.
 package logx
 
 import (

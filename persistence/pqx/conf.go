@@ -1,3 +1,4 @@
+// Package pqx provides PostgreSQL connection configuration and database migration helpers.
 package pqx
 
 import (

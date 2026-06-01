@@ -1,3 +1,4 @@
+// Package syserr defines the structured error type and error code taxonomy used across the system.
 package syserr
 
 // Code is a stable, machine-readable string that classifies the kind of error.

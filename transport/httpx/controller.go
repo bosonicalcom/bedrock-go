@@ -1,3 +1,4 @@
+// Package httpx provides HTTP transport primitives, including the Controller interface for endpoint registration.
 package httpx
 
 import "net/http"

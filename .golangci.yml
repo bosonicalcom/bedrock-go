@@ -1,0 +1,36 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - copyloopvar     # catch accidental loop-variable captures (backwards compat with pre-1.22 consumers)
+    - dupword         # duplicate words in comments and string literals
+    - durationcheck   # incorrect time.Duration multiplication
+    - errorlint       # enforce errors.Is/As over direct comparison
+    - gocritic        # opinionated but high-signal style and correctness checks
+    - godot           # doc comments must end with a period
+    - gomoddirectives # validates directives inside go.mod
+    - misspell        # typos in code, comments, and string literals
+    - nolintlint      # nolint directives must name the specific linter
+    - noctx           # HTTP calls must use a context-aware variant
+    - revive          # comprehensive general-purpose linter
+    - sloglint        # correct use of log/slog (structured keys, no printf-style)
+    - testifylint     # testify assertion correctness (assert.NoError vs assert.Nil, etc.)
+    - thelper         # test helper functions must call t.Helper()
+    - unconvert       # unnecessary type conversions
+    - unparam         # function parameters that always receive the same value
+    - usestdlibvars   # prefer stdlib constants (http.MethodGet) over magic strings
+    - usetesting      # tests should use testing.TB helpers (t.Setenv, t.TempDir, etc.)
+    - wastedassign    # assignments whose result is never read
+
+formatters:
+  enable:
+    - goimports
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -10,6 +10,7 @@ import (
 	"github.com/bosonicalcom/bedrock-go/observability/tracex"
 	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type logEntry struct {
@@ -36,7 +37,7 @@ func TestNewInterceptorHandler(t *testing.T) {
 	out := logEntry{}
 	err := sonic.Unmarshal(buf.Bytes(), &out)
 	t.Logf("buf: %s", buf.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "test log message", out.Message)
 	assert.Equal(t, "INFO", out.Level)
 	assert.Equal(t, traceID, out.TraceID)

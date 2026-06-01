@@ -1,3 +1,4 @@
+// Package tracex provides trace-ID propagation via context and slog integration.
 package tracex
 
 import "context"

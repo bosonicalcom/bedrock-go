@@ -40,30 +40,19 @@ func TestIsDetailType(t *testing.T) {
 	withDebug := syserr.New(syserr.CodeInternal, "msg",
 		syserr.WithDetails(syserr.DebugInfo{Detail: "x"}),
 	)
-	tests := []struct {
-		name string
-		run  func(t *testing.T)
-	}{
-		{
-			name: "found matching type",
-			run:  func(t *testing.T) { assert.True(t, syserr.IsDetailType[syserr.DebugInfo](withDebug)) },
-		},
-		{
-			name: "not found different type",
-			run:  func(t *testing.T) { assert.False(t, syserr.IsDetailType[syserr.ErrorInfo](withDebug)) },
-		},
-		{
-			name: "nil error",
-			run:  func(t *testing.T) { assert.False(t, syserr.IsDetailType[syserr.DebugInfo](nil)) },
-		},
-		{
-			name: "plain error",
-			run:  func(t *testing.T) { assert.False(t, syserr.IsDetailType[syserr.DebugInfo](errors.New("plain"))) },
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, tt.run)
-	}
+
+	t.Run("found matching type", func(t *testing.T) {
+		assert.True(t, syserr.IsDetailType[syserr.DebugInfo](withDebug))
+	})
+	t.Run("not found different type", func(t *testing.T) {
+		assert.False(t, syserr.IsDetailType[syserr.ErrorInfo](withDebug))
+	})
+	t.Run("nil error", func(t *testing.T) {
+		assert.False(t, syserr.IsDetailType[syserr.DebugInfo](nil))
+	})
+	t.Run("plain error", func(t *testing.T) {
+		assert.False(t, syserr.IsDetailType[syserr.DebugInfo](errors.New("plain")))
+	})
 }
 
 func TestIsPublicDetail(t *testing.T) {

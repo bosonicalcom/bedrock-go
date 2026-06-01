@@ -1,3 +1,4 @@
+// Package sysconf provides environment-based configuration loading with optional validation.
 package sysconf
 
 import (

@@ -1,3 +1,4 @@
+// Package validator provides the Validator interface and a global validation instance backed by go-playground/validator.
 package validator
 
 //go:generate go tool mockgen -source=validator.go -destination=validatortest/validator_mock.go -package=validatortest

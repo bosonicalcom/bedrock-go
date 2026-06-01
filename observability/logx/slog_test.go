@@ -74,7 +74,7 @@ func (s *InterceptorHandlerSuite) TestHandle_InterceptorError_ShortCircuits() {
 	h := logx.NewInterceptorHandler(s.next, errFn)
 	err := h.Handle(context.Background(), slog.Record{})
 
-	s.ErrorIs(err, sentinel)
+	s.Require().ErrorIs(err, sentinel)
 	s.Empty(s.next.records)
 }
 
