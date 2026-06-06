@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -89,6 +90,11 @@ func SetupSDK(ctx context.Context, serviceName string, opts ...SetupSDKOpt) (*In
 	}
 	shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
 	otel.SetMeterProvider(meterProvider)
+
+	if err = otelruntime.Start(otelruntime.WithMeterProvider(meterProvider)); err != nil {
+		handleErr(err)
+		return nil, shutdown, err
+	}
 
 	return &Instruments{
 		MeterProvider:  meterProvider,
