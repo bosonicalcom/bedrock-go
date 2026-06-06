@@ -1,0 +1,163 @@
+package otelx
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+)
+
+// Instruments holds the OpenTelemetry meter and tracer providers.
+type Instruments struct {
+	MeterProvider  *metric.MeterProvider
+	TracerProvider *trace.TracerProvider
+}
+
+// SetupSDK bootstraps the OpenTelemetry pipeline.
+// If it does not return an error, make sure to call shutdown for proper cleanup.
+func SetupSDK(ctx context.Context, serviceName string, opts ...SetupSDKOpt) (*Instruments, func(context.Context) error, error) {
+	options := &setupSDKOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	var shutdownFuncs []func(context.Context) error
+	var err error
+
+	// shutdown calls cleanup functions registered via shutdownFuncs.
+	// The errors from the calls are joined.
+	// Each registered cleanup will be invoked once.
+	shutdown := func(ctx context.Context) error {
+		var err error
+		for _, fn := range shutdownFuncs {
+			err = errors.Join(err, fn(ctx))
+		}
+		shutdownFuncs = nil
+		return err
+	}
+
+	// handleErr calls shutdown for cleanup and makes sure that all errors are returned.
+	handleErr := func(inErr error) {
+		err = errors.Join(inErr, shutdown(ctx))
+	}
+
+	// Setup shared resource.
+
+	sharedResource, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName(serviceName),
+			semconv.ServiceNamespace(cmp.Or(options.platform, "unknown")),
+			semconv.ServiceVersion(cmp.Or(options.version, "v0.1.0")),
+			attribute.String("service.environment", cmp.Or(options.environment, "unknown")),
+		),
+	)
+	if err != nil {
+		handleErr(err)
+		return nil, shutdown, err
+	}
+
+	// Set up propagator.
+	prop := newPropagator()
+	otel.SetTextMapPropagator(prop)
+
+	// Set up trace provider.
+	tracerProvider, err := newTracerProvider(ctx, sharedResource)
+	if err != nil {
+		handleErr(err)
+		return nil, shutdown, err
+	}
+	shutdownFuncs = append(shutdownFuncs, tracerProvider.Shutdown)
+	otel.SetTracerProvider(tracerProvider)
+
+	// Set up meter provider.
+	meterProvider, err := newMeterProvider(ctx, sharedResource)
+	if err != nil {
+		handleErr(err)
+		return nil, shutdown, err
+	}
+	shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
+	otel.SetMeterProvider(meterProvider)
+
+	return &Instruments{
+		MeterProvider:  meterProvider,
+		TracerProvider: tracerProvider,
+	}, shutdown, nil
+}
+
+func newPropagator() propagation.TextMapPropagator {
+	return propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	)
+}
+
+func newTracerProvider(ctx context.Context, sharedResource *resource.Resource) (*trace.TracerProvider, error) {
+	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+
+	tracerProvider := trace.NewTracerProvider(
+		trace.WithBatcher(traceExporter,
+			// Default is 5s.
+			trace.WithBatchTimeout(time.Second*5)),
+		trace.WithResource(sharedResource),
+	)
+	return tracerProvider, nil
+}
+
+func newMeterProvider(ctx context.Context, sharedResource *resource.Resource) (*metric.MeterProvider, error) {
+	metricExporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+
+	meterProvider := metric.NewMeterProvider(
+		metric.WithReader(metric.NewPeriodicReader(metricExporter,
+			// Default is 1m.
+			metric.WithInterval(time.Minute))),
+		metric.WithResource(sharedResource),
+	)
+	return meterProvider, nil
+}
+
+type setupSDKOptions struct {
+	environment string
+	platform    string
+	version     string
+}
+
+type SetupSDKOpt func(*setupSDKOptions)
+
+// WithEnvironment sets the service environment for the SDK.
+func WithEnvironment(environment string) SetupSDKOpt {
+	return func(opts *setupSDKOptions) {
+		opts.environment = environment
+	}
+}
+
+// WithPlatform sets the service platform (namespace) for the SDK.
+func WithPlatform(platform string) SetupSDKOpt {
+	return func(opts *setupSDKOptions) {
+		opts.platform = platform
+	}
+}
+
+// WithVersion sets the service version for the SDK.
+func WithVersion(version string) SetupSDKOpt {
+	return func(opts *setupSDKOptions) {
+		opts.version = version
+	}
+}
