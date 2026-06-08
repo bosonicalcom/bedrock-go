@@ -18,7 +18,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -28,6 +27,24 @@ const (
 )
 
 // - Server
+
+// ServerInterceptorSkipper is a predicate function type used to skip interceptors based on the request.
+//
+// Returns true if the interceptor should not be skipped, false otherwise.
+type ServerInterceptorSkipper func(r *http.Request) bool
+
+type serverInterceptorOptions struct {
+	skipper ServerInterceptorSkipper
+}
+
+type ServerInterceptorOpt func(*serverInterceptorOptions)
+
+// WithServerSkipper returns a ServerInterceptorOpt that sets the skipper function for the interceptor.
+func WithServerSkipper(skipper ServerInterceptorSkipper) ServerInterceptorOpt {
+	return func(o *serverInterceptorOptions) {
+		o.skipper = skipper
+	}
+}
 
 // ServerInterceptor is a function type used to chain behaviors for server requests.
 type ServerInterceptor func(next http.Handler) http.Handler
@@ -42,9 +59,17 @@ func ServerInterceptorChain(h http.Handler, interceptors ...ServerInterceptor) h
 }
 
 // IdentifierServerInterceptor wraps server requests with a request and correlation ID.
-func IdentifierServerInterceptor() ServerInterceptor {
+func IdentifierServerInterceptor(opts ...ServerInterceptorOpt) ServerInterceptor {
+	o := &serverInterceptorOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
 	return func(next http.Handler) http.Handler {
 		return Handler(func(w http.ResponseWriter, r *http.Request) {
+			if o.skipper != nil && o.skipper(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			correlationID := r.Header.Get(HeaderCorrelationID)
 			requestID, err := uuid.NewV7()
 			if err != nil {
@@ -102,9 +127,17 @@ var _acceptedLogAuthHeaderPrefixes = sync.OnceValue[sets.HashSet[string]](func()
 // LogServerInterceptor wraps server requests with structured logs.
 //
 // It emits a normal access log for every request and a second error log when a system error was written.
-func LogServerInterceptor(logger *slog.Logger, lvl slog.Level) ServerInterceptor {
+func LogServerInterceptor(logger *slog.Logger, lvl slog.Level, opts ...ServerInterceptorOpt) ServerInterceptor {
+	o := &serverInterceptorOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
 	return func(next http.Handler) http.Handler {
 		return Handler(func(w http.ResponseWriter, r *http.Request) {
+			if o.skipper != nil && o.skipper(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			// prepare
 			authPrefix := "None"
 			if apiKey := r.Header.Get("X-Api-Key"); apiKey != "" {
@@ -158,9 +191,17 @@ func LogServerInterceptor(logger *slog.Logger, lvl slog.Level) ServerInterceptor
 // TraceServerInterceptor records internal errors on the active span.
 //
 // It expects some upstream middleware to have already created a span and placed it in the request context.
-func TraceServerInterceptor() ServerInterceptor {
+func TraceServerInterceptor(opts ...ServerInterceptorOpt) ServerInterceptor {
+	o := &serverInterceptorOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
 	return func(next http.Handler) http.Handler {
 		return Handler(func(w http.ResponseWriter, r *http.Request) {
+			if o.skipper != nil && o.skipper(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			wrappedWriter, r, obs := ensureRequestObservation(w, r)
 			next.ServeHTTP(wrappedWriter, r)
 
@@ -218,33 +259,6 @@ func TraceServerInterceptor() ServerInterceptor {
 					),
 				)
 			}
-		})
-	}
-}
-
-// MetricServerInterceptor increments an error counter for responses that wrote a system error.
-//
-// Keep labels low-cardinality. Do not add request IDs, debug details, stack traces, or raw paths here.
-func MetricServerInterceptor(counter metric.Int64Counter) ServerInterceptor {
-	return func(next http.Handler) http.Handler {
-		return Handler(func(w http.ResponseWriter, r *http.Request) {
-			wrappedWriter, r, obs := ensureRequestObservation(w, r)
-			next.ServeHTTP(wrappedWriter, r)
-
-			if obs.SystemError() == nil {
-				return
-			}
-
-			e := obs.ObservedError()
-			counter.Add(r.Context(), 1,
-				metric.WithAttributes(
-					attribute.String("transport", "http"),
-					attribute.String("http.request.method", r.Method),
-					attribute.Int("http.response.status_code", wrappedWriter.status),
-					attribute.String("app.error.code", string(e.Code)),
-					attribute.String("error.type", e.Type),
-				),
-			)
 		})
 	}
 }

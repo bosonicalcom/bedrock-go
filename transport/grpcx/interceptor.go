@@ -8,11 +8,10 @@ import (
 	"sync"
 	"time"
 
-	grpcmiddleware_logging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/google/uuid"
+	grpcmiddleware_logging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -24,6 +23,11 @@ import (
 const (
 	MetadataRequestID     = "x-request-id"
 	MetadataCorrelationID = "x-correlation-id"
+)
+
+type (
+	ServerUnaryInterceptorSkipper  func(*grpc.UnaryServerInfo) bool
+	ServerStreamInterceptorSkipper func(*grpc.StreamServerInfo) bool
 )
 
 // -- Request observation (shared state across interceptors via context)
@@ -218,6 +222,13 @@ func injectIdentifiers(ctx context.Context) context.Context {
 	return ctx
 }
 
+type interceptorOptions struct {
+	skipperUnary  ServerUnaryInterceptorSkipper
+	skipperStream ServerStreamInterceptorSkipper
+}
+
+type InterceptorOpt func(*interceptorOptions)
+
 // -- Recovery handler (wired into grpc-middleware recovery interceptor)
 
 // PanicRecoveryHandler converts a panic value into a gRPC status error.
@@ -331,47 +342,16 @@ func annotateSpan(ctx context.Context, method string, err error) {
 	}
 }
 
-// -- Metric interceptor
-
-// MetricServerInterceptor increments an error counter when the handler returns a syserr.
-// Keep labels low-cardinality — no request IDs, debug details, or raw paths.
-func MetricServerInterceptor(counter metric.Int64Counter) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
-	record := func(ctx context.Context, method string) {
-		obs, ok := getRequestObservation(ctx)
-		if !ok || obs.SystemError() == nil {
-			return
-		}
-		e := obs.ObservedError()
-		counter.Add(ctx, 1,
-			metric.WithAttributes(
-				attribute.String("transport", "grpc"),
-				attribute.String("rpc.method", method),
-				attribute.String("app.error.code", string(e.Code)),
-				attribute.String("error.type", e.Type),
-			),
-		)
-	}
-
-	unary := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		resp, err := handler(ctx, req)
-		record(ctx, info.FullMethod)
-		return resp, err
-	}
-
-	stream := func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		err := handler(srv, ss)
-		record(ss.Context(), info.FullMethod)
-		return err
-	}
-
-	return unary, stream
-}
-
 // -- Error logging interceptor
 
 // ErrorLogServerInterceptor logs a structured error entry when the handler returns a syserr.
 // Wire this after the logger (grpc-middleware) so that request/correlation IDs are already in context.
-func ErrorLogServerInterceptor(logger *slog.Logger) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
+func ErrorLogServerInterceptor(logger *slog.Logger, opts ...InterceptorOpt) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
+	options := &interceptorOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	logErr := func(ctx context.Context, method string) {
 		obs, ok := getRequestObservation(ctx)
 		if !ok || obs.SystemError() == nil {
@@ -386,12 +366,18 @@ func ErrorLogServerInterceptor(logger *slog.Logger) (grpc.UnaryServerInterceptor
 	}
 
 	unary := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if options.skipperUnary != nil && options.skipperUnary(info) {
+			return handler(ctx, req)
+		}
 		resp, err := handler(ctx, req)
 		logErr(ctx, info.FullMethod)
 		return resp, err
 	}
 
 	stream := func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if options.skipperStream != nil && options.skipperStream(info) {
+			return handler(srv, ss)
+		}
 		err := handler(srv, ss)
 		logErr(ss.Context(), info.FullMethod)
 		return err
@@ -411,8 +397,7 @@ func SyserrServerInterceptor() (grpc.UnaryServerInterceptor, grpc.StreamServerIn
 		if err == nil {
 			return nil
 		}
-		var sysErr *syserr.Error
-		if errors.As(err, &sysErr) {
+		if sysErr, ok := errors.AsType[*syserr.Error](err); ok {
 			return StatusFromError(ctx, sysErr)
 		}
 		return err

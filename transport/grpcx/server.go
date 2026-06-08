@@ -10,15 +10,15 @@ import (
 	grpcmiddleware_logging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/stats"
 
 	"github.com/bosonicalcom/bedrock-go/proc"
 )
 
 // ServerConfig represents the configuration for a gRPC server.
 type ServerConfig struct {
-	Addr string `env:"GRPC_SERVER_ADDR"`
+	Addr string
 }
 
 func newDefaultServerConfig() *ServerConfig {
@@ -65,17 +65,8 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 	}
 
 	// 4. Span annotator — adds syserr attributes to the otelgrpc span (if tracing enabled)
-	if options.enableTracing {
+	if options.enableStats {
 		addPair(SpanAnnotatorServerInterceptor())
-	}
-
-	// 5. Metric counter (if meter set)
-	if options.meter != nil {
-		counter, err := options.meter.Int64Counter("grpc.server.errors")
-		if err != nil {
-			return nil, fmt.Errorf("bedrock.grpcx: cannot create otel error counter: %w", err)
-		}
-		addPair(MetricServerInterceptor(counter))
 	}
 
 	// 6. Syserr conversion — converts *syserr.Error returns into gRPC status errors
@@ -97,8 +88,19 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
-	if options.enableTracing {
-		grpcOpts = append(grpcOpts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	grpcOpts = append(grpcOpts, options.serverOptions...)
+	if options.enableStats {
+		grpcOpts = append(grpcOpts,
+			grpc.StatsHandler(
+				otelgrpc.NewServerHandler(
+					otelgrpc.WithFilter(func(ri *stats.RPCTagInfo) bool {
+						return !(ri.FullMethodName == "grpc.health.v1.Health/Check" ||
+							ri.FullMethodName == "grpc.health.v1.Health/List" ||
+							ri.FullMethodName == "grpc.health.v1.Health/Watch")
+					}),
+				),
+			),
+		)
 	}
 
 	srv := grpc.NewServer(grpcOpts...)
@@ -142,12 +144,12 @@ type serverOptions struct {
 	config             *ServerConfig
 	logger             *slog.Logger
 	logLevel           slog.Level
-	enableTracing      bool
-	meter              metric.Meter
+	enableStats        bool
 	enableHealth       bool
 	controllers        []Controller
 	unaryInterceptors  []grpc.UnaryServerInterceptor
 	streamInterceptors []grpc.StreamServerInterceptor
+	serverOptions      []grpc.ServerOption
 }
 
 func newDefaultServerOptions() *serverOptions {
@@ -158,6 +160,7 @@ func newDefaultServerOptions() *serverOptions {
 		controllers:        make([]Controller, 0),
 		unaryInterceptors:  make([]grpc.UnaryServerInterceptor, 0),
 		streamInterceptors: make([]grpc.StreamServerInterceptor, 0),
+		serverOptions:      make([]grpc.ServerOption, 0),
 	}
 }
 
@@ -230,20 +233,11 @@ func WithServerStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) 
 	}
 }
 
-// EnableServerTracing enables OpenTelemetry tracing for a [grpc.Server] allocated by [NewServer].
+// EnableServerTelemetry enables OpenTelemetry metrics + tracing for a [grpc.Server] allocated by [NewServer].
 // Uses otelgrpc stats handler for span creation and a span annotator for syserr attributes.
-func EnableServerTracing() ServerOption {
+func EnableServerTelemetry() ServerOption {
 	return func(options *serverOptions) error {
-		options.enableTracing = true
-		return nil
-	}
-}
-
-// EnableServerMetrics enables OpenTelemetry metrics for a [grpc.Server] allocated by [NewServer].
-// Increments a grpc.server.errors counter for every syserr returned by a handler.
-func EnableServerMetrics(meter metric.Meter) ServerOption {
-	return func(options *serverOptions) error {
-		options.meter = meter
+		options.enableStats = true
 		return nil
 	}
 }
@@ -252,6 +246,14 @@ func EnableServerMetrics(meter metric.Meter) ServerOption {
 func DisableServerHealthExport() ServerOption {
 	return func(options *serverOptions) error {
 		options.enableHealth = false
+		return nil
+	}
+}
+
+// WithServerOptions appends custom [grpc.ServerOption](s) to the server.
+func WithServerOptions(options ...grpc.ServerOption) ServerOption {
+	return func(serverOptions *serverOptions) error {
+		serverOptions.serverOptions = append(serverOptions.serverOptions, options...)
 		return nil
 	}
 }

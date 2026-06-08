@@ -3,19 +3,17 @@ package httpx
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/metric"
 
 	"github.com/bosonicalcom/bedrock-go/proc"
 )
 
 // ServerConfig represents a configuration for an [http.Server].
 type ServerConfig struct {
-	Addr string `env:"HTTP_SERVER_ADDR"`
+	Addr string
 }
 
 func newDefaultServerConfig() *ServerConfig {
@@ -35,21 +33,18 @@ func NewServer(opts ...ServerOption) (*http.Server, error) {
 
 	// setup interceptors
 	// - base interceptors
-	// ordering matter, first=outermost
+	// ordering matters, first=outermost
 	interceptors := make([]ServerInterceptor, 0, 4+len(options.interceptors))
 	interceptors = append(interceptors, IdentifierServerInterceptor())
 	if options.logger != nil {
-		interceptors = append(interceptors, LogServerInterceptor(options.logger, options.logLevel))
+		interceptors = append(interceptors,
+			LogServerInterceptor(options.logger, options.logLevel,
+				WithServerSkipper(skipHealth),
+			),
+		)
 	}
 	if options.enableTracing {
-		interceptors = append(interceptors, TraceServerInterceptor())
-	}
-	if options.meter != nil {
-		counter, err := options.meter.Int64Counter("http.server.errors")
-		if err != nil {
-			return nil, fmt.Errorf("bedrock.httpx: cannot create otel error counter")
-		}
-		interceptors = append(interceptors, MetricServerInterceptor(counter))
+		interceptors = append(interceptors, TraceServerInterceptor(WithServerSkipper(skipHealth)))
 	}
 	interceptors = append(interceptors, RecoverServerInterceptor())
 	// if options.enableLocalization {
@@ -73,7 +68,7 @@ func NewServer(opts ...ServerOption) (*http.Server, error) {
 	// finish server setup
 	handlerHTTP := ServerInterceptorChain(mux, interceptors...)
 	if options.enableTracing {
-		handlerHTTP = otelhttp.NewHandler(handlerHTTP, "http.server")
+		handlerHTTP = otelhttp.NewHandler(handlerHTTP, options.name)
 	}
 	return &http.Server{
 		Addr:    options.config.Addr,
@@ -102,10 +97,10 @@ func NewServerBackgroundProcess(srv *http.Server) proc.BackgroundProcess {
 
 type serverOptions struct {
 	config             *ServerConfig
+	name               string
 	enableLocalization bool
 	logger             *slog.Logger
 	enableTracing      bool
-	meter              metric.Meter
 	logLevel           slog.Level
 	enableHealth       bool
 	interceptors       []ServerInterceptor
@@ -115,6 +110,7 @@ type serverOptions struct {
 func newDefaultServerOptions() *serverOptions {
 	return &serverOptions{
 		config:             newDefaultServerConfig(),
+		name:               "http.server",
 		enableLocalization: false,
 		logLevel:           slog.LevelInfo,
 		enableHealth:       true,
@@ -133,6 +129,14 @@ func WithServerConfig(cfg *ServerConfig) ServerOption {
 			return errors.New("bedrock.httpx: server config cannot be nil")
 		}
 		options.config = cfg
+		return nil
+	}
+}
+
+// WithServerName sets the name of the [http.Server] allocated by [NewServer].
+func WithServerName(name string) ServerOption {
+	return func(options *serverOptions) error {
+		options.name = name
 		return nil
 	}
 }
@@ -218,10 +222,6 @@ func EnableServerTracing() ServerOption {
 	}
 }
 
-// EnableServerMetrics enables metrics capabilities (using OpenTelemetry) to an [http.Server] allocated by [NewServer].
-func EnableServerMetrics(meter metric.Meter) ServerOption {
-	return func(options *serverOptions) error {
-		options.meter = meter
-		return nil
-	}
+func skipHealth(r *http.Request) bool {
+	return r.URL.Path == "/healthz" || r.URL.Path == "/readyz"
 }
