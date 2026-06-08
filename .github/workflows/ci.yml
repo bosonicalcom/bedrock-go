@@ -10,6 +10,7 @@ on:
 jobs:
   ci:
     uses: bosonicalcom/github-workflows/.github/workflows/ci-go.yml@master
+    secrets: inherit
     with:
       go-version: "1.26.1"
       docker-build: false
