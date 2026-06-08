@@ -1,0 +1,70 @@
+package persistence
+
+import "context"
+
+type Repository[K comparable, T any] interface {
+	WriteRepository[K, T]
+	ReadRepository[K, T]
+}
+
+type WriteRepository[K comparable, T any] interface {
+	Save(ctx context.Context, v T) error
+	Delete(ctx context.Context, v T) error
+	DeleteByKey(ctx context.Context, key K) error
+}
+
+type WriteBatchRepository[K comparable, T any] interface {
+	// SaveAll persists the given set of values.
+	//
+	// Returns all keys of the persisted values.
+	SaveAll(ctx context.Context, v ...T) ([]K, error)
+	// DeleteAll deletes the given set of values from the persistent storage.
+	//
+	// Returns all keys of the persisted values.
+	DeleteAll(ctx context.Context, v ...T) ([]K, error)
+	// DeleteByKeys deletes all values with the given set of keys from the persistence storage.
+	//
+	// Returns all keys of the persisted values.
+	DeleteByKeys(ctx context.Context, keys ...K) ([]K, error)
+}
+
+type ReadRepository[K comparable, T any] interface {
+	GetByKey(ctx context.Context, key K) (T, error)
+	List(ctx context.Context, opts ...ListOption) (*Page[T], error)
+}
+
+type ListOptions struct {
+	pageSize   int
+	pageNumber int64
+	pageToken  string
+}
+
+type ListOption func(options *ListOptions)
+
+// NewDefaultListOptions returns a default ListOptions instance with a page size of 25.
+func NewDefaultListOptions() *ListOptions {
+	return &ListOptions{
+		pageSize: 25,
+	}
+}
+
+// WithPageSize sets the maximum number of items to be retrieved by a List operation.
+func WithPageSize(n int) ListOption {
+	return func(options *ListOptions) {
+		options.pageSize = n
+	}
+}
+
+// WithPageNumber sets the page number to be retrieved by a List operation.
+func WithPageNumber(n int64) ListOption {
+	return func(options *ListOptions) {
+		options.pageNumber = n
+	}
+}
+
+// WithPageToken sets the cursor where the List operation should start/continue fetching.
+func WithPageToken(v string) ListOption {
+	return func(options *ListOptions) {
+		options.pageToken = v
+	}
+}
