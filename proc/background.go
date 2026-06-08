@@ -1,5 +1,7 @@
 package proc
 
+//go:generate go tool mockgen -source=background.go -destination=proctest/background_mock.go -package=proctest
+
 import (
 	"context"
 	"errors"

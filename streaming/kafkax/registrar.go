@@ -1,5 +1,7 @@
 package kafkax
 
+//go:generate go tool mockgen -source=registrar.go -destination=kafkatest/registrar_mock.go -package=kafkatest
+
 import "github.com/twmb/franz-go/pkg/kgo"
 
 type ConsumerRegistrar interface {

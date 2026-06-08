@@ -1,6 +1,8 @@
 // Package httpx provides HTTP transport primitives, including the Controller interface for endpoint registration.
 package httpx
 
+//go:generate go tool mockgen -source=controller.go -destination=httpxtest/controller_mock.go -package=httpxtest
+
 import "net/http"
 
 // A Controller is a system component responsible for registering HTTP endpoints

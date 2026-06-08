@@ -1,6 +1,10 @@
 version: '3'
 
 tasks:
+  gen-mocks:
+    desc: Regenerate all mocks from //go:generate directives
+    cmd: go generate ./...
+
   generate:
     desc: Regenerate all mocks
     cmd: go generate ./...

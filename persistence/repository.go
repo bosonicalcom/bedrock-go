@@ -1,5 +1,7 @@
 package persistence
 
+//go:generate go tool mockgen -source=repository.go -destination=persistencetest/repository_mock.go -package=persistencetest
+
 import "context"
 
 type Repository[K comparable, T any] interface {
