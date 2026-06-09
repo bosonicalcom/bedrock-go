@@ -9,10 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bosonicalcom/bedrock-go/observability/logx"
 	"github.com/bosonicalcom/bedrock-go/proc"
 	"github.com/bosonicalcom/bedrock-go/syncx"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/semaphore"
 )
 
 type consumerEntry struct {
@@ -370,8 +372,16 @@ func (c *ControllerManager) processPartition(idx int, partition kgo.FetchTopicPa
 	wg := sync.WaitGroup{}
 	var err error
 	errMu := sync.Mutex{}
+	sem := semaphore.NewWeighted(100) // last concurrency control, safety net, avoids OOM errors
 	partition.EachRecord(func(record *kgo.Record) {
+		if errAcquire := sem.Acquire(c.rootProcCtx, 1); errAcquire != nil {
+			if c.config.Logger != nil {
+				c.config.Logger.WarnContext(c.rootProcCtx, "cannot acquire semaphore while processing records", logx.Error(errAcquire))
+			}
+			return
+		}
 		wg.Go(func() {
+			defer sem.Release(1)
 			ctx, cancel := context.WithTimeout(c.rootProcCtx, c.config.HandlerTimeout)
 			defer cancel()
 
