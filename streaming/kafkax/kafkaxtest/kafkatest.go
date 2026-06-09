@@ -1,6 +1,6 @@
-// Package kafkatest provides reusable Kafka test helpers backed by testcontainers.
+// Package kafkaxtest provides reusable Kafka test helpers backed by testcontainers.
 // Import this package in tests that need a real Kafka-compatible broker.
-package kafkatest
+package kafkaxtest
 
 import (
 	"context"
@@ -37,17 +37,17 @@ func NewContainer(tb testing.TB, opts ...ContainerOpt) []string {
 	ctx := context.Background()
 	ctr, err := kafka.Run(ctx, o.image, kafka.WithClusterID("test-cluster"))
 	if err != nil {
-		tb.Fatalf("kafkatest: start kafka container: %v", err)
+		tb.Fatalf("kafkaxtest: start kafka container: %v", err)
 	}
 	tb.Cleanup(func() {
 		if err := ctr.Terminate(ctx); err != nil {
-			tb.Logf("kafkatest: terminate container: %v", err)
+			tb.Logf("kafkaxtest: terminate container: %v", err)
 		}
 	})
 
 	brokers, err := ctr.Brokers(ctx)
 	if err != nil {
-		tb.Fatalf("kafkatest: get broker addresses: %v", err)
+		tb.Fatalf("kafkaxtest: get broker addresses: %v", err)
 	}
 	return brokers
 }
@@ -60,7 +60,7 @@ func NewClient(tb testing.TB, addrs []string, opts ...kgo.Opt) *kgo.Client {
 	allOpts := append([]kgo.Opt{kgo.SeedBrokers(addrs...)}, opts...)
 	cl, err := kgo.NewClient(allOpts...)
 	if err != nil {
-		tb.Fatalf("kafkatest: create kgo client: %v", err)
+		tb.Fatalf("kafkaxtest: create kgo client: %v", err)
 	}
 	tb.Cleanup(cl.Close)
 	return cl

@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
@@ -78,12 +77,8 @@ func TestNewServer_LoggingSkipsHealthPaths(t *testing.T) {
 func TestNewServer_OTELSkipsHealthPaths(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
-	// Create the server after the global provider is set so otelhttp captures it.
-	srv, err := httpx.NewServer(httpx.EnableServerTracing())
+	srv, err := httpx.NewServer(httpx.WithServerTracerProvider(tp))
 	require.NoError(t, err)
 
 	tests := []struct {

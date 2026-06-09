@@ -1,6 +1,6 @@
 package kafkax
 
-//go:generate go tool mockgen -source=registrar.go -destination=kafkatest/registrar_mock.go -package=kafkatest
+//go:generate go tool mockgen -source=registrar.go -destination=kafkaxtest/registrar_mock.go -package=kafkaxtest
 
 import "github.com/twmb/franz-go/pkg/kgo"
 

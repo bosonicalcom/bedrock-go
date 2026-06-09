@@ -1,12 +1,15 @@
 package httpx
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bosonicalcom/bedrock-go/proc"
 )
@@ -43,7 +46,7 @@ func NewServer(opts ...ServerOption) (*http.Server, error) {
 			),
 		)
 	}
-	if options.enableTracing {
+	if options.tracerProvider != nil {
 		interceptors = append(interceptors, TraceServerInterceptor(WithServerSkipper(skipHealth)))
 	}
 	interceptors = append(interceptors, RecoverServerInterceptor())
@@ -67,12 +70,19 @@ func NewServer(opts ...ServerOption) (*http.Server, error) {
 
 	// finish server setup
 	handlerHTTP := ServerInterceptorChain(mux, interceptors...)
-	if options.enableTracing {
-		handlerHTTP = otelhttp.NewHandler(handlerHTTP, options.name,
+	if options.tracerProvider != nil || options.meterProvider != nil {
+		otelOpts := []otelhttp.Option{
 			otelhttp.WithFilter(func(r *http.Request) bool {
 				return !skipHealth(r)
 			}),
-		)
+		}
+		if options.tracerProvider != nil {
+			otelOpts = append(otelOpts, otelhttp.WithTracerProvider(options.tracerProvider))
+		}
+		if options.meterProvider != nil {
+			otelOpts = append(otelOpts, otelhttp.WithMeterProvider(options.meterProvider))
+		}
+		handlerHTTP = otelhttp.NewHandler(handlerHTTP, cmp.Or(options.name, "http.server"), otelOpts...)
 	}
 	return &http.Server{
 		Addr:    options.config.Addr,
@@ -104,8 +114,9 @@ type serverOptions struct {
 	name               string
 	enableLocalization bool
 	logger             *slog.Logger
-	enableTracing      bool
 	logLevel           slog.Level
+	tracerProvider     trace.TracerProvider
+	meterProvider      metric.MeterProvider
 	enableHealth       bool
 	interceptors       []ServerInterceptor
 	controllers        []Controller
@@ -218,10 +229,20 @@ func WithServerInterceptors(interceptors ...ServerInterceptor) ServerOption {
 	}
 }
 
-// EnableServerTracing enables tracing capabilities (using OpenTelemetry) to an [http.Server] allocated by [NewServer].
-func EnableServerTracing() ServerOption {
+// WithServerTracerProvider enables tracing by setting the [trace.TracerProvider] instance to
+// an [http.Server] built with [NewServer].
+func WithServerTracerProvider(p trace.TracerProvider) ServerOption {
 	return func(options *serverOptions) error {
-		options.enableTracing = true
+		options.tracerProvider = p
+		return nil
+	}
+}
+
+// WithServerMeterProvider enables metrics by setting the [metric.MetricProvider] instance to
+// an [http.Server] built with [NewServer].
+func WithServerMeterProvider(p metric.MeterProvider) ServerOption {
+	return func(options *serverOptions) error {
+		options.meterProvider = p
 		return nil
 	}
 }

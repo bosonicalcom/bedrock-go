@@ -1,7 +1,7 @@
 // Package grpcx provides gRPC transport primitives, including the Controller interface and health checking.
 package grpcx
 
-//go:generate go tool mockgen -source=controller.go -destination=grpctest/controller_mock.go -package=grpctest
+//go:generate go tool mockgen -source=controller.go -destination=grpcxtest/controller_mock.go -package=grpcxtest
 
 import "google.golang.org/grpc"
 

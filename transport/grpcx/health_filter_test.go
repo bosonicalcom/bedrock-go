@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
@@ -125,9 +124,6 @@ func TestNewServer_LoggingSkipsHealthChecks(t *testing.T) {
 func TestNewServer_OTELSkipsHealthChecks(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(tp)
-	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
 	tests := []struct {
 		name string
@@ -152,8 +148,7 @@ func TestNewServer_OTELSkipsHealthChecks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			exp.Reset()
-			// Create the server after the global provider is set so otelgrpc captures it.
-			client := newHealthClient(t, grpcx.EnableServerTelemetry())
+			client := newHealthClient(t, grpcx.WithServerTracerProvider(tp))
 
 			require.NoError(t, tt.call(context.Background(), client))
 			require.NoError(t, tp.ForceFlush(context.Background()))

@@ -10,6 +10,8 @@ import (
 	grpcmiddleware_logging "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/stats"
 
@@ -67,7 +69,7 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 	}
 
 	// 4. Span annotator — adds syserr attributes to the otelgrpc span (if tracing enabled)
-	if options.enableStats {
+	if options.tracerProvider != nil {
 		addPair(SpanAnnotatorServerInterceptor())
 	}
 
@@ -91,16 +93,19 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 	grpcOpts = append(grpcOpts, options.serverOptions...)
-	if options.enableStats {
-		grpcOpts = append(grpcOpts,
-			grpc.StatsHandler(
-				otelgrpc.NewServerHandler(
-					otelgrpc.WithFilter(func(ri *stats.RPCTagInfo) bool {
-						return !isHealthCheckMethod(ri.FullMethodName)
-					}),
-				),
-			),
-		)
+	if options.tracerProvider != nil || options.meterProvider != nil {
+		otelOpts := []otelgrpc.Option{
+			otelgrpc.WithFilter(func(ri *stats.RPCTagInfo) bool {
+				return !isHealthCheckMethod(ri.FullMethodName)
+			}),
+		}
+		if options.tracerProvider != nil {
+			otelOpts = append(otelOpts, otelgrpc.WithTracerProvider(options.tracerProvider))
+		}
+		if options.meterProvider != nil {
+			otelOpts = append(otelOpts, otelgrpc.WithMeterProvider(options.meterProvider))
+		}
+		grpcOpts = append(grpcOpts, grpc.StatsHandler(otelgrpc.NewServerHandler(otelOpts...)))
 	}
 
 	srv := grpc.NewServer(grpcOpts...)
@@ -143,7 +148,8 @@ func NewServerBackgroundProcess(srv *grpc.Server, addr string) proc.BackgroundPr
 type serverOptions struct {
 	logger             *slog.Logger
 	logLevel           slog.Level
-	enableStats        bool
+	tracerProvider     trace.TracerProvider
+	meterProvider      metric.MeterProvider
 	enableHealth       bool
 	controllers        []Controller
 	unaryInterceptors  []grpc.UnaryServerInterceptor
@@ -209,11 +215,20 @@ func WithServerStreamInterceptors(interceptors ...grpc.StreamServerInterceptor) 
 	}
 }
 
-// EnableServerTelemetry enables OpenTelemetry metrics + tracing for a [grpc.Server] allocated by [NewServer].
-// Uses otelgrpc stats handler for span creation and a span annotator for syserr attributes.
-func EnableServerTelemetry() ServerOption {
+// WithServerTracerProvider enables tracing by setting the [trace.TracerProvider] instance to
+// an [grpc.Server] built with [NewServer].
+func WithServerTracerProvider(p trace.TracerProvider) ServerOption {
 	return func(options *serverOptions) error {
-		options.enableStats = true
+		options.tracerProvider = p
+		return nil
+	}
+}
+
+// WithServerMeterProvider enables metrics by setting the [metric.MetricProvider] instance to
+// an [grpc.Server] built with [NewServer].
+func WithServerMeterProvider(p metric.MeterProvider) ServerOption {
+	return func(options *serverOptions) error {
+		options.meterProvider = p
 		return nil
 	}
 }
