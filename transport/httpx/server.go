@@ -68,7 +68,11 @@ func NewServer(opts ...ServerOption) (*http.Server, error) {
 	// finish server setup
 	handlerHTTP := ServerInterceptorChain(mux, interceptors...)
 	if options.enableTracing {
-		handlerHTTP = otelhttp.NewHandler(handlerHTTP, options.name)
+		handlerHTTP = otelhttp.NewHandler(handlerHTTP, options.name,
+			otelhttp.WithFilter(func(r *http.Request) bool {
+				return !skipHealth(r)
+			}),
+		)
 	}
 	return &http.Server{
 		Addr:    options.config.Addr,

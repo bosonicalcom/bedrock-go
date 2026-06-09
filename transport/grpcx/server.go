@@ -16,17 +16,6 @@ import (
 	"github.com/bosonicalcom/bedrock-go/proc"
 )
 
-// ServerConfig represents the configuration for a gRPC server.
-type ServerConfig struct {
-	Addr string
-}
-
-func newDefaultServerConfig() *ServerConfig {
-	return &ServerConfig{
-		Addr: ":0", // random port
-	}
-}
-
 // NewServer allocates a [grpc.Server]. Customize its behavior by passing [ServerOption] arguments.
 func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 	options := newDefaultServerOptions()
@@ -49,15 +38,28 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 	// 1. Identifier — creates observation, injects request/correlation IDs
 	addPair(IdentifierServerInterceptor())
 
-	// 2. Access logging via grpc-middleware (if logger set)
+	// 2. Access logging via grpc-middleware (if logger set), skipping health check methods.
+	// grpc-middleware/v2 has no built-in decider API, so we wrap the interceptors.
 	if options.logger != nil {
 		logOpts := []grpcmiddleware_logging.Option{
 			grpcmiddleware_logging.WithLogOnEvents(grpcmiddleware_logging.StartCall, grpcmiddleware_logging.FinishCall),
 			grpcmiddleware_logging.WithLevels(grpcmiddleware_logging.DefaultServerCodeToLevel),
 		}
+		baseUnary := grpcmiddleware_logging.UnaryServerInterceptor(SlogAdapter(options.logger), logOpts...)
+		baseStream := grpcmiddleware_logging.StreamServerInterceptor(SlogAdapter(options.logger), logOpts...)
 		addPair(
-			grpcmiddleware_logging.UnaryServerInterceptor(SlogAdapter(options.logger), logOpts...),
-			grpcmiddleware_logging.StreamServerInterceptor(SlogAdapter(options.logger), logOpts...),
+			func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+				if isHealthCheckMethod(info.FullMethod) {
+					return handler(ctx, req)
+				}
+				return baseUnary(ctx, req, info, handler)
+			},
+			func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				if isHealthCheckMethod(info.FullMethod) {
+					return handler(srv, ss)
+				}
+				return baseStream(srv, ss, info, handler)
+			},
 		)
 
 		// 3. Error log — emits a rich slog error entry when a syserr is recorded
@@ -94,9 +96,7 @@ func NewServer(opts ...ServerOption) (*grpc.Server, error) {
 			grpc.StatsHandler(
 				otelgrpc.NewServerHandler(
 					otelgrpc.WithFilter(func(ri *stats.RPCTagInfo) bool {
-						return !(ri.FullMethodName == "grpc.health.v1.Health/Check" ||
-							ri.FullMethodName == "grpc.health.v1.Health/List" ||
-							ri.FullMethodName == "grpc.health.v1.Health/Watch")
+						return !isHealthCheckMethod(ri.FullMethodName)
 					}),
 				),
 			),
@@ -141,7 +141,6 @@ func NewServerBackgroundProcess(srv *grpc.Server, addr string) proc.BackgroundPr
 // -- Options
 
 type serverOptions struct {
-	config             *ServerConfig
 	logger             *slog.Logger
 	logLevel           slog.Level
 	enableStats        bool
@@ -154,7 +153,6 @@ type serverOptions struct {
 
 func newDefaultServerOptions() *serverOptions {
 	return &serverOptions{
-		config:             newDefaultServerConfig(),
 		logLevel:           slog.LevelInfo,
 		enableHealth:       true,
 		controllers:        make([]Controller, 0),
@@ -166,28 +164,6 @@ func newDefaultServerOptions() *serverOptions {
 
 // ServerOption is an optional routine that enables a more granular way of configuring a [grpc.Server].
 type ServerOption func(options *serverOptions) error
-
-// WithServerConfig sets the server configuration for a [grpc.Server] allocated by [NewServer].
-func WithServerConfig(cfg *ServerConfig) ServerOption {
-	return func(options *serverOptions) error {
-		if cfg == nil {
-			return errors.New("bedrock.grpcx: server config cannot be nil")
-		}
-		options.config = cfg
-		return nil
-	}
-}
-
-// WithServerAddress sets the listen address for a [grpc.Server] allocated by [NewServer].
-func WithServerAddress(addr string) ServerOption {
-	return func(options *serverOptions) error {
-		if addr == "" {
-			return errors.New("bedrock.grpcx: server address cannot be empty")
-		}
-		options.config.Addr = addr
-		return nil
-	}
-}
 
 // WithServerLogger sets the [slog.Logger] for a [grpc.Server] allocated by [NewServer].
 // Automatically enables access logging and error logging.

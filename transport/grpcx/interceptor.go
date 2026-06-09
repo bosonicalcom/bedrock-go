@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,15 @@ type (
 	ServerUnaryInterceptorSkipper  func(*grpc.UnaryServerInfo) bool
 	ServerStreamInterceptorSkipper func(*grpc.StreamServerInfo) bool
 )
+
+// isHealthCheckMethod reports whether the given gRPC full method name refers to the standard
+// health checking protocol. Handles both slash-prefixed ("/grpc.health.v1.Health/Check") and
+// bare ("grpc.health.v1.Health/Check") formats.
+func isHealthCheckMethod(method string) bool {
+	return strings.HasSuffix(method, "grpc.health.v1.Health/Check") ||
+		strings.HasSuffix(method, "grpc.health.v1.Health/Watch") ||
+		strings.HasSuffix(method, "grpc.health.v1.Health/List")
+}
 
 // -- Request observation (shared state across interceptors via context)
 
