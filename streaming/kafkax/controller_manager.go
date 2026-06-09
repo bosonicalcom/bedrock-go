@@ -66,6 +66,7 @@ type ControllerManagerConfig struct {
 	MaxWorkers            int
 	PartitionJobQueueSize int
 	HandlerTimeout        time.Duration
+	ClientBaseOptions     []kgo.Opt
 	Controllers           []Controller
 	Interceptors          []ConsumerInterceptor // global
 	Logger                *slog.Logger
@@ -110,6 +111,7 @@ func newDefaultControllerManagerConfig() *ControllerManagerConfig {
 		MaxWorkers:            10,
 		PartitionJobQueueSize: 100,
 		HandlerTimeout:        time.Second * 30,
+		ClientBaseOptions:     make([]kgo.Opt, 0),
 		Controllers:           make([]Controller, 0),
 		Interceptors:          make([]ConsumerInterceptor, 0),
 	}
@@ -244,11 +246,11 @@ func (c *ControllerManager) setupConsumerClients() error {
 		ctrl.RegisterConsumers(c)
 	}
 
-	baseClientOpts := []kgo.Opt{
+	baseClientOpts := append(c.config.ClientBaseOptions, []kgo.Opt{
 		kgo.WithContext(c.rootProcCtx),
 		kgo.SeedBrokers(c.config.SeedBrokerAddrs...),
 		kgo.AutoCommitMarks(),
-	}
+	}...)
 	if c.config.AutoTopicCreation {
 		baseClientOpts = append(baseClientOpts, kgo.AllowAutoTopicCreation())
 	}
@@ -467,5 +469,11 @@ func WithManagerQueueSize(n int) ControllerManagerOption {
 func WithHandlerTimeout(d time.Duration) ControllerManagerOption {
 	return func(config *ControllerManagerConfig) {
 		config.HandlerTimeout = d
+	}
+}
+
+func WithManagerClientOptions(opts []kgo.Opt) ControllerManagerOption {
+	return func(config *ControllerManagerConfig) {
+		config.ClientBaseOptions = opts
 	}
 }
