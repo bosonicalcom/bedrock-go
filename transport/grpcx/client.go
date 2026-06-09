@@ -23,7 +23,7 @@ func NewClient(serviceName, addr string, opts ...ClientOpt) (*grpc.ClientConn, e
 	if options.insecure {
 		clientOpts = append(clientOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
-	if options.tracerProvider != nil || options.metricProvider != nil {
+	if options.tracerProvider != nil || options.meterProvider != nil {
 		otelOptions := make([]otelgrpc.Option, 0, 4)
 		otelOptions = append(otelOptions,
 			otelgrpc.WithSpanAttributes(
@@ -36,8 +36,8 @@ func NewClient(serviceName, addr string, opts ...ClientOpt) (*grpc.ClientConn, e
 		if options.tracerProvider != nil {
 			otelOptions = append(otelOptions, otelgrpc.WithTracerProvider(options.tracerProvider))
 		}
-		if options.metricProvider != nil {
-			otelOptions = append(otelOptions, otelgrpc.WithMeterProvider(options.metricProvider))
+		if options.meterProvider != nil {
+			otelOptions = append(otelOptions, otelgrpc.WithMeterProvider(options.meterProvider))
 		}
 		clientOpts = append(clientOpts,
 			grpc.WithStatsHandler(
@@ -51,7 +51,7 @@ func NewClient(serviceName, addr string, opts ...ClientOpt) (*grpc.ClientConn, e
 type clientOptions struct {
 	insecure       bool
 	tracerProvider trace.TracerProvider
-	metricProvider metric.MeterProvider
+	meterProvider  metric.MeterProvider
 	extraOpts      []grpc.DialOption
 }
 
@@ -72,19 +72,17 @@ func DisableInsecureClient() ClientOpt {
 
 // WithClientTracerProvider enables tracing by setting the [trace.TracerProvider] instance to
 // an [grpc.ClientConn] built with [NewClient].
-func WithClientTracerProvider(p trace.TracerProvider) ServerOption {
-	return func(options *serverOptions) error {
+func WithClientTracerProvider(p trace.TracerProvider) ClientOpt {
+	return func(options *clientOptions) {
 		options.tracerProvider = p
-		return nil
 	}
 }
 
 // WithClientMeterProvider enables metrics by setting the [metric.MetricProvider] instance to
 // an [grpc.ClientConn] built with [NewClient].
-func WithClientMeterProvider(p metric.MeterProvider) ServerOption {
-	return func(options *serverOptions) error {
+func WithClientMeterProvider(p metric.MeterProvider) ClientOpt {
+	return func(options *clientOptions) {
 		options.meterProvider = p
-		return nil
 	}
 }
 
