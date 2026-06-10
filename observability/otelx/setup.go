@@ -11,17 +11,31 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 // Instruments holds the OpenTelemetry meter and tracer providers.
 type Instruments struct {
-	MeterProvider  *metric.MeterProvider
-	TracerProvider *trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+	TracerProvider trace.TracerProvider
+}
+
+// NewInstrumentsNoop builds [Instruments] with no-operation instances.
+//
+// Safe to call at any time.
+func NewInstrumentsNoop() *Instruments {
+	return &Instruments{
+		MeterProvider:  metricnoop.NewMeterProvider(),
+		TracerProvider: tracenoop.NewTracerProvider(),
+	}
 }
 
 // SetupSDK bootstraps the OpenTelemetry pipeline.
@@ -109,32 +123,32 @@ func newPropagator() propagation.TextMapPropagator {
 	)
 }
 
-func newTracerProvider(ctx context.Context, sharedResource *resource.Resource) (*trace.TracerProvider, error) {
+func newTracerProvider(ctx context.Context, sharedResource *resource.Resource) (*sdktrace.TracerProvider, error) {
 	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
 
-	tracerProvider := trace.NewTracerProvider(
-		trace.WithBatcher(traceExporter,
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExporter,
 			// Default is 5s.
-			trace.WithBatchTimeout(time.Second*5)),
-		trace.WithResource(sharedResource),
+			sdktrace.WithBatchTimeout(time.Second*5)),
+		sdktrace.WithResource(sharedResource),
 	)
 	return tracerProvider, nil
 }
 
-func newMeterProvider(ctx context.Context, sharedResource *resource.Resource) (*metric.MeterProvider, error) {
+func newMeterProvider(ctx context.Context, sharedResource *resource.Resource) (*sdkmetric.MeterProvider, error) {
 	metricExporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
 
-	meterProvider := metric.NewMeterProvider(
-		metric.WithReader(metric.NewPeriodicReader(metricExporter,
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter,
 			// Default is 1m.
-			metric.WithInterval(time.Minute))),
-		metric.WithResource(sharedResource),
+			sdkmetric.WithInterval(time.Minute))),
+		sdkmetric.WithResource(sharedResource),
 	)
 	return meterProvider, nil
 }
