@@ -3,6 +3,7 @@ package validator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -15,29 +16,46 @@ import (
 
 var _tagNames = []string{"json", "env", "yaml", "toml", "xml"}
 
-// GoPlaygroundValidate creates a new validator instance with no extra options.
+// goPlaygroundValidate memoizes the shared engine.
+//
+// The [sync.OnceValue] result must be stored rather than called inline: sync.OnceValue(f)()
+// allocates a fresh wrapper on every call and so rebuilds the engine every time.
+var goPlaygroundValidate = sync.OnceValue(func() *validator.Validate {
+	v := validator.New()
+	v.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		for _, tag := range _tagNames {
+			name, _, _ := strings.Cut(fld.Tag.Get(tag), ",")
+			if name != "" && name != "-" {
+				return name
+			}
+		}
+		// skip if tag key says it should be ignored
+		return ""
+	})
+	return v
+})
+
+// GoPlaygroundValidate returns the validator instance with no extra options.
 //
 // It is a singleton instance, ensuring that the same configuration is used across the application.
 func GoPlaygroundValidate() *validator.Validate {
-	return sync.OnceValue(func() *validator.Validate {
-		v := validator.New()
-		v.RegisterTagNameFunc(func(fld reflect.StructField) string {
-			for _, tag := range _tagNames {
-				name := strings.SplitN(fld.Tag.Get(tag), ",", 2)[0]
-				if name != "" && name != "-" {
-					return name
-				}
-			}
-			// skip if tag key says it should be ignored
-			return ""
-		})
-		return v
-	})()
+	return goPlaygroundValidate()
 }
 
 // GoPlaygroundValidator is a struct that implements the Validator interface, acting like an adapter to the Go
 // Playground Validator, translating validation errors into the syserr system errors.
-type GoPlaygroundValidator struct{}
+//
+// The zero value is usable and falls back to [GoPlaygroundValidate].
+type GoPlaygroundValidator struct {
+	validator *validator.Validate
+}
+
+// NewGoPlaygroundValidator returns an adapter instance of GoPlaygroundValidator compatible with the [Validator] interface.
+func NewGoPlaygroundValidator() GoPlaygroundValidator {
+	return GoPlaygroundValidator{
+		validator: GoPlaygroundValidate(),
+	}
+}
 
 var _ Validator = (*GoPlaygroundValidator)(nil)
 
@@ -45,7 +63,14 @@ var _ Validator = (*GoPlaygroundValidator)(nil)
 // and translating any [validator.ValidationErrors] into a [syserr.Error] with
 // [syserr.CodeInvalidArgument] and a [syserr.BadRequest] detail listing each violation.
 func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
-	err := GoPlaygroundValidate().StructCtx(ctx, v)
+	// tolerate the zero value: callers reach this type through the Validator interface, and
+	// a nil engine would otherwise panic deep inside go-playground.
+	engine := g.validator
+	if engine == nil {
+		engine = GoPlaygroundValidate()
+	}
+
+	err := engine.StructCtx(ctx, v)
 	if err == nil {
 		return nil
 	}
@@ -58,6 +83,9 @@ func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
 	}
 
 	violations := make([]syserr.FieldViolation, 0, len(validationErrs))
+	// raw go-playground messages, kept for operators only: they name the Go struct and the
+	// validator tag, which is exactly why they are no longer used as the public description.
+	rawMessages := make(map[string]string, len(validationErrs))
 	for _, validationErr := range validationErrs {
 		// localeMsgKey := fmt.Sprintf("global.errors.field_validations.%s", validationErr.Tag())
 		fieldNameSplit := strings.Split(validationErr.Namespace(), ".")
@@ -69,7 +97,7 @@ func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
 		}
 		validationFieldErr := syserr.FieldViolation{
 			Field:       fieldName,
-			Description: validationErr.Error(),
+			Description: newDescription(validationErr),
 			Reason:      newReason(validationErr),
 			// LocalizedMessage: i18n.NewLocalizedMessageError(ctx, localeMsgKey,
 			// 	i18n.WithMessageFallback(validationErr.Error()),
@@ -79,6 +107,7 @@ func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
 			// ),
 		}
 		violations = append(violations, validationFieldErr)
+		rawMessages[fieldName] = validationErr.Error()
 	}
 
 	return syserr.New(syserr.CodeInvalidArgument, "validation failed",
@@ -89,6 +118,10 @@ func (g GoPlaygroundValidator) Validate(ctx context.Context, v any) error {
 			},
 			syserr.BadRequest{
 				Violations: violations,
+			},
+			syserr.DebugInfo{
+				Detail:   fmt.Sprintf("go-playground rejected %d field(s)", len(validationErrs)),
+				Metadata: rawMessages,
 			},
 			// i18n.NewLocalizedMessageError(ctx, "global.errors.field_validations.message",
 			// 	i18n.WithMessageFallback(validationErrs.Error()),

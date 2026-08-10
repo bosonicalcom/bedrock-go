@@ -210,6 +210,8 @@ type DebugInfo struct {
 	Detail string
 	// StackEntries is a list of stack trace entries that led to this error. This can be useful for debugging.
 	StackEntries []string
+	// Metadata is a map of key-value pairs that provide additional context for debugging.
+	Metadata map[string]string
 }
 
 var _ Detail = (*DebugInfo)(nil)

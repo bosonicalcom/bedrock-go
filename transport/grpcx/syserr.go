@@ -2,6 +2,7 @@ package grpcx
 
 import (
 	"github.com/samber/lo"
+	"golang.org/x/text/language"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -41,6 +42,8 @@ func codeFromSystemError(code syserr.Code) codes.Code {
 		return codes.Unimplemented
 	case syserr.CodeUnavailable:
 		return codes.Unavailable
+	case syserr.CodeDataLoss:
+		return codes.DataLoss
 	default:
 		return codes.Internal
 	}
@@ -76,13 +79,66 @@ func syserrCodeFromGRPC(code codes.Code) syserr.Code {
 		return syserr.CodeUnimplemented
 	case codes.Unavailable:
 		return syserr.CodeUnavailable
+	case codes.DataLoss:
+		return syserr.CodeDataLoss
 	default:
 		return syserr.CodeInternal
 	}
 }
 
-// ParseSystemError parses a [syserr.Error] from a gRPC status error returned by a client call.
-// If err is nil or not a gRPC status error, it returns nil.
+// -- Locale conversion
+
+// localeString renders a [language.Tag] for the wire. The zero Tag stringifies to "und",
+// a valid-but-meaningless BCP 47 tag, so emit an empty string instead to keep an unset
+// locale from round-tripping into a bogus one on the receiving side.
+func localeString(tag language.Tag) string {
+	if s := tag.String(); s != "und" {
+		return s
+	}
+	return ""
+}
+
+// localeTag parses a BCP 47 tag received from the wire. Empty and unparseable values both
+// yield [language.Und], matching the behavior of the httpx transport.
+func localeTag(s string) language.Tag {
+	if s == "" {
+		return language.Und
+	}
+	return language.Make(s)
+}
+
+// protoLocalizedMessage converts a [syserr.LocalizedMessage] to its proto counterpart,
+// returning nil for an unset message so it is omitted from the wire entirely.
+func protoLocalizedMessage(msg syserr.LocalizedMessage) *errdetails.LocalizedMessage {
+	if msg.Message == "" {
+		return nil
+	}
+	return &errdetails.LocalizedMessage{
+		Locale:  localeString(msg.Locale),
+		Message: msg.Message,
+	}
+}
+
+// systemLocalizedMessage converts a proto localized message to its [syserr] counterpart.
+func systemLocalizedMessage(msg *errdetails.LocalizedMessage) syserr.LocalizedMessage {
+	if msg == nil {
+		return syserr.LocalizedMessage{}
+	}
+	return syserr.LocalizedMessage{
+		Locale:  localeTag(msg.Locale),
+		Message: msg.Message,
+	}
+}
+
+// ParseSystemError parses a [syserr.Error] from an error returned by a gRPC client call.
+//
+//   - nil in, nil out.
+//   - A gRPC status error is decoded into its code, message and details.
+//   - A non-status error is still converted rather than discarded: context errors map to
+//     CANCELLED and DEADLINE_EXCEEDED, everything else to UNKNOWN.
+//
+// The original error is always attached via [syserr.WithCauses], so errors.Is, errors.As
+// and status.Code keep working through the returned error.
 func ParseSystemError(err error) *syserr.Error {
 	if err == nil {
 		return nil
@@ -90,12 +146,17 @@ func ParseSystemError(err error) *syserr.Error {
 
 	st, ok := status.FromError(err)
 	if !ok {
-		return nil
+		// status.FromError already produced New(codes.Unknown, err.Error()); upgrade
+		// context errors to the codes gRPC would have used for them.
+		if ctxSt := status.FromContextError(err); ctxSt.Code() != codes.Unknown {
+			st = ctxSt
+		}
 	}
 
 	out := &syserr.Error{
 		Code:    syserrCodeFromGRPC(st.Code()),
 		Message: st.Message(),
+		Causes:  []error{err},
 	}
 
 	for _, detail := range st.Details() {
@@ -111,8 +172,10 @@ func ParseSystemError(err error) *syserr.Error {
 			violations := make([]syserr.FieldViolation, 0, len(v.FieldViolations))
 			for _, fv := range v.FieldViolations {
 				violations = append(violations, syserr.FieldViolation{
-					Field:       fv.Field,
-					Description: fv.Description,
+					Field:            fv.Field,
+					Description:      fv.Description,
+					Reason:           fv.Reason,
+					LocalizedMessage: systemLocalizedMessage(fv.LocalizedMessage),
 				})
 			}
 			out.Details = append(out.Details, syserr.BadRequest{Violations: violations})
@@ -167,6 +230,9 @@ func ParseSystemError(err error) *syserr.Error {
 			}
 			out.Details = append(out.Details, syserr.Help{Links: links})
 
+		case *errdetails.LocalizedMessage:
+			out.Details = append(out.Details, systemLocalizedMessage(v))
+
 		case *errdetails.DebugInfo:
 			out.Details = append(out.Details, syserr.DebugInfo{
 				Detail:       v.Detail,
@@ -182,14 +248,12 @@ func ParseSystemError(err error) *syserr.Error {
 func statusFromSystemError(err *syserr.Error) *status.Status {
 	st := status.New(codeFromSystemError(err.Code), err.Message)
 
-	details := protoDetailsFromSystemError(err)
-	if len(details) == 0 {
-		return st
-	}
-
-	// WithDetails can only fail if a proto message type is not registered; all errdetails types are well-known.
-	if enriched, e := st.WithDetails(details...); e == nil {
-		return enriched
+	// Attach details one at a time: WithDetails is all-or-nothing per call, so a single
+	// unmarshalable message must not take the rest of them down with it.
+	for _, detail := range protoDetailsFromSystemError(err) {
+		if enriched, e := st.WithDetails(detail); e == nil {
+			st = enriched
+		}
 	}
 
 	return st
@@ -214,12 +278,23 @@ func protoDetailsFromSystemError(err *syserr.Error) []protoadapt.MessageV1 {
 				Metadata: v.Metadata,
 			})
 
+		case syserr.LocalizedMessage:
+			if v.Message == "" {
+				continue
+			}
+			details = append(details, &errdetails.LocalizedMessage{
+				Locale:  localeString(v.Locale),
+				Message: v.Message,
+			})
+
 		case syserr.BadRequest:
 			details = append(details, &errdetails.BadRequest{
 				FieldViolations: lo.Map(v.Violations, func(item syserr.FieldViolation, _ int) *errdetails.BadRequest_FieldViolation {
 					return &errdetails.BadRequest_FieldViolation{
-						Field:       item.Field,
-						Description: item.Description,
+						Field:            item.Field,
+						Description:      item.Description,
+						Reason:           item.Reason,
+						LocalizedMessage: protoLocalizedMessage(item.LocalizedMessage),
 					}
 				}),
 			})

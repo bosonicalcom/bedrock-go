@@ -16,9 +16,18 @@ func NewClient(serviceName, addr string, opts ...ClientOpt) (*grpc.ClientConn, e
 		opt(options)
 	}
 
-	clientOpts := make([]grpc.DialOption, 0, len(options.extraOpts)*2)
+	clientOpts := make([]grpc.DialOption, 0, len(options.extraOpts)+4)
 	if len(options.extraOpts) > 0 {
 		clientOpts = append(clientOpts, options.extraOpts...)
+	}
+	if !options.disableSyserr {
+		// Appended last so the conversion sits innermost, closest to the wire: interceptors
+		// supplied through WithClientOptions then observe an already-converted *syserr.Error.
+		unary, stream := SyserrClientInterceptor()
+		clientOpts = append(clientOpts,
+			grpc.WithChainUnaryInterceptor(unary),
+			grpc.WithChainStreamInterceptor(stream),
+		)
 	}
 	if options.insecure {
 		clientOpts = append(clientOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -50,6 +59,7 @@ func NewClient(serviceName, addr string, opts ...ClientOpt) (*grpc.ClientConn, e
 
 type clientOptions struct {
 	insecure       bool
+	disableSyserr  bool
 	tracerProvider trace.TracerProvider
 	meterProvider  metric.MeterProvider
 	extraOpts      []grpc.DialOption
@@ -67,6 +77,14 @@ type ClientOpt func(*clientOptions)
 func DisableInsecureClient() ClientOpt {
 	return func(co *clientOptions) {
 		co.insecure = false
+	}
+}
+
+// DisableClientSyserrInterceptor disables [SyserrClientInterceptor] on a [grpc.ClientConn]
+// built by [NewClient], leaving raw gRPC status errors to the caller.
+func DisableClientSyserrInterceptor() ClientOpt {
+	return func(co *clientOptions) {
+		co.disableSyserr = true
 	}
 }
 

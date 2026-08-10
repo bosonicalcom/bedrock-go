@@ -15,6 +15,9 @@ const (
 	Unknown Environment = iota
 	// Local environment for development and testing on a developer's machine.
 	Local
+	// Development environment for engineers to test using a remote infrastructure which mirrors Live,
+	// aiming to be as close as possible to real-world scenarios.
+	Development
 	// Sandbox environment for engineers to test using a remote infrastructure which mirrors Live,
 	// aiming to be as close as possible to real-world scenarios.
 	Sandbox
@@ -30,25 +33,32 @@ var (
 	_ encoding.TextMarshaler   = (*Environment)(nil)
 
 	_toStringMap = map[Environment]string{
-		Unknown:    "unknown",
-		Local:      "local",
-		Sandbox:    "sandbox",
-		Demo:       "demo",
-		Production: "production",
+		Unknown:     "unknown",
+		Local:       "local",
+		Development: "development",
+		Sandbox:     "sandbox",
+		Demo:        "demo",
+		Production:  "production",
 	}
 	_fromStringMap = map[string]Environment{
-		"unknown":    Unknown,
-		"local":      Local,
-		"sandbox":    Sandbox,
-		"demo":       Demo,
-		"production": Production,
+		"unknown":     Unknown,
+		"local":       Local,
+		"development": Development,
+		"develop":     Development, // alias
+		"dev":         Development, // alias
+		"sandbox":     Sandbox,
+		"snx":         Sandbox, // alias
+		"demo":        Demo,
+		"production":  Production,
+		"prod":        Production, // alias
 	}
 	_toShortStringMap = map[Environment]string{
-		Unknown:    "",
-		Local:      "local",
-		Sandbox:    "snx",
-		Demo:       "demo",
-		Production: "prod",
+		Unknown:     "",
+		Local:       "local",
+		Development: "dev",
+		Sandbox:     "snx",
+		Demo:        "demo",
+		Production:  "prod",
 	}
 )
 
