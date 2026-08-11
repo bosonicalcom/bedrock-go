@@ -5,6 +5,8 @@ package persistence
 import (
 	"context"
 	"errors"
+
+	"github.com/bosonicalcom/bedrock-go/persistence/pagex"
 )
 
 var (
@@ -42,7 +44,7 @@ type ReadRepository[K comparable, T any] interface {
 }
 
 type PageRepository[T any] interface {
-	List(ctx context.Context, opts ...ListOption) (*Page[*T], error)
+	List(ctx context.Context, opts ...ListOption) (*pagex.Page[*T], error)
 }
 
 type ListOptions struct {

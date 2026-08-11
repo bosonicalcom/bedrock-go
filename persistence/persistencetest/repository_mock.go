@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	persistence "github.com/bosonicalcom/bedrock-go/persistence"
+	pagex "github.com/bosonicalcom/bedrock-go/persistence/pagex"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,7 +43,7 @@ func (m *MockRepository[K, T]) EXPECT() *MockRepositoryMockRecorder[K, T] {
 }
 
 // Delete mocks base method.
-func (m *MockRepository[K, T]) Delete(ctx context.Context, v T) error {
+func (m *MockRepository[K, T]) Delete(ctx context.Context, v *T) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, v)
 	ret0, _ := ret[0].(error)
@@ -70,10 +71,10 @@ func (mr *MockRepositoryMockRecorder[K, T]) DeleteByKey(ctx, key any) *gomock.Ca
 }
 
 // GetByKey mocks base method.
-func (m *MockRepository[K, T]) GetByKey(ctx context.Context, key K) (T, error) {
+func (m *MockRepository[K, T]) GetByKey(ctx context.Context, key K) (*T, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetByKey", ctx, key)
-	ret0, _ := ret[0].(T)
+	ret0, _ := ret[0].(*T)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -84,28 +85,8 @@ func (mr *MockRepositoryMockRecorder[K, T]) GetByKey(ctx, key any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByKey", reflect.TypeOf((*MockRepository[K, T])(nil).GetByKey), ctx, key)
 }
 
-// List mocks base method.
-func (m *MockRepository[K, T]) List(ctx context.Context, opts ...persistence.ListOption) (*persistence.Page[T], error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range opts {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "List", varargs...)
-	ret0, _ := ret[0].(*persistence.Page[T])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// List indicates an expected call of List.
-func (mr *MockRepositoryMockRecorder[K, T]) List(ctx any, opts ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, opts...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockRepository[K, T])(nil).List), varargs...)
-}
-
 // Save mocks base method.
-func (m *MockRepository[K, T]) Save(ctx context.Context, v T) error {
+func (m *MockRepository[K, T]) Save(ctx context.Context, v *T) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Save", ctx, v)
 	ret0, _ := ret[0].(error)
@@ -143,7 +124,7 @@ func (m *MockWriteRepository[K, T]) EXPECT() *MockWriteRepositoryMockRecorder[K,
 }
 
 // Delete mocks base method.
-func (m *MockWriteRepository[K, T]) Delete(ctx context.Context, v T) error {
+func (m *MockWriteRepository[K, T]) Delete(ctx context.Context, v *T) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, v)
 	ret0, _ := ret[0].(error)
@@ -171,7 +152,7 @@ func (mr *MockWriteRepositoryMockRecorder[K, T]) DeleteByKey(ctx, key any) *gomo
 }
 
 // Save mocks base method.
-func (m *MockWriteRepository[K, T]) Save(ctx context.Context, v T) error {
+func (m *MockWriteRepository[K, T]) Save(ctx context.Context, v *T) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Save", ctx, v)
 	ret0, _ := ret[0].(error)
@@ -293,10 +274,10 @@ func (m *MockReadRepository[K, T]) EXPECT() *MockReadRepositoryMockRecorder[K, T
 }
 
 // GetByKey mocks base method.
-func (m *MockReadRepository[K, T]) GetByKey(ctx context.Context, key K) (T, error) {
+func (m *MockReadRepository[K, T]) GetByKey(ctx context.Context, key K) (*T, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetByKey", ctx, key)
-	ret0, _ := ret[0].(T)
+	ret0, _ := ret[0].(*T)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -307,22 +288,46 @@ func (mr *MockReadRepositoryMockRecorder[K, T]) GetByKey(ctx, key any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByKey", reflect.TypeOf((*MockReadRepository[K, T])(nil).GetByKey), ctx, key)
 }
 
+// MockPageRepository is a mock of PageRepository interface.
+type MockPageRepository[T any] struct {
+	ctrl     *gomock.Controller
+	recorder *MockPageRepositoryMockRecorder[T]
+	isgomock struct{}
+}
+
+// MockPageRepositoryMockRecorder is the mock recorder for MockPageRepository.
+type MockPageRepositoryMockRecorder[T any] struct {
+	mock *MockPageRepository[T]
+}
+
+// NewMockPageRepository creates a new mock instance.
+func NewMockPageRepository[T any](ctrl *gomock.Controller) *MockPageRepository[T] {
+	mock := &MockPageRepository[T]{ctrl: ctrl}
+	mock.recorder = &MockPageRepositoryMockRecorder[T]{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPageRepository[T]) EXPECT() *MockPageRepositoryMockRecorder[T] {
+	return m.recorder
+}
+
 // List mocks base method.
-func (m *MockReadRepository[K, T]) List(ctx context.Context, opts ...persistence.ListOption) (*persistence.Page[T], error) {
+func (m *MockPageRepository[T]) List(ctx context.Context, opts ...persistence.ListOption) (*pagex.Page[*T], error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx}
 	for _, a := range opts {
 		varargs = append(varargs, a)
 	}
 	ret := m.ctrl.Call(m, "List", varargs...)
-	ret0, _ := ret[0].(*persistence.Page[T])
+	ret0, _ := ret[0].(*pagex.Page[*T])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockReadRepositoryMockRecorder[K, T]) List(ctx any, opts ...any) *gomock.Call {
+func (mr *MockPageRepositoryMockRecorder[T]) List(ctx any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx}, opts...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockReadRepository[K, T])(nil).List), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockPageRepository[T])(nil).List), varargs...)
 }
