@@ -11,11 +11,11 @@ tasks:
 
   test:
     desc: Run all unit tests
-    cmd: go test ./...
+    cmd: go test -timeout 1m ./...
 
   test:integration:
     desc: Run integration tests (requires Docker)
-    cmd: go test -tags integration ./...
+    cmd: go test -tags integration -timeout 1m ./...
 
   vet:
     desc: Run go vet
