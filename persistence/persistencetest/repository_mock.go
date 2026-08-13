@@ -13,8 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	persistence "github.com/bosonicalcom/bedrock-go/persistence"
-	pagex "github.com/bosonicalcom/bedrock-go/persistence/pagex"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -286,48 +284,4 @@ func (m *MockReadRepository[K, T]) GetByKey(ctx context.Context, key K) (*T, err
 func (mr *MockReadRepositoryMockRecorder[K, T]) GetByKey(ctx, key any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByKey", reflect.TypeOf((*MockReadRepository[K, T])(nil).GetByKey), ctx, key)
-}
-
-// MockPageRepository is a mock of PageRepository interface.
-type MockPageRepository[T any] struct {
-	ctrl     *gomock.Controller
-	recorder *MockPageRepositoryMockRecorder[T]
-	isgomock struct{}
-}
-
-// MockPageRepositoryMockRecorder is the mock recorder for MockPageRepository.
-type MockPageRepositoryMockRecorder[T any] struct {
-	mock *MockPageRepository[T]
-}
-
-// NewMockPageRepository creates a new mock instance.
-func NewMockPageRepository[T any](ctrl *gomock.Controller) *MockPageRepository[T] {
-	mock := &MockPageRepository[T]{ctrl: ctrl}
-	mock.recorder = &MockPageRepositoryMockRecorder[T]{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPageRepository[T]) EXPECT() *MockPageRepositoryMockRecorder[T] {
-	return m.recorder
-}
-
-// List mocks base method.
-func (m *MockPageRepository[T]) List(ctx context.Context, opts ...persistence.ListOption) (*pagex.Page[*T], error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx}
-	for _, a := range opts {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "List", varargs...)
-	ret0, _ := ret[0].(*pagex.Page[*T])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// List indicates an expected call of List.
-func (mr *MockPageRepositoryMockRecorder[T]) List(ctx any, opts ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx}, opts...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockPageRepository[T])(nil).List), varargs...)
 }

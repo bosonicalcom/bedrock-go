@@ -5,8 +5,6 @@ package persistence
 import (
 	"context"
 	"errors"
-
-	"github.com/bosonicalcom/bedrock-go/persistence/pagex"
 )
 
 var (
@@ -41,44 +39,4 @@ type WriteBatchRepository[K comparable, T any] interface {
 
 type ReadRepository[K comparable, T any] interface {
 	GetByKey(ctx context.Context, key K) (*T, error)
-}
-
-type PageRepository[T any] interface {
-	List(ctx context.Context, opts ...ListOption) (*pagex.Page[*T], error)
-}
-
-type ListOptions struct {
-	PageSize   int32
-	PageNumber int64
-	PageToken  string
-}
-
-type ListOption func(options *ListOptions)
-
-// NewDefaultListOptions returns a default ListOptions instance with a page size of 25.
-func NewDefaultListOptions() *ListOptions {
-	return &ListOptions{
-		PageSize: 25,
-	}
-}
-
-// WithPageSize sets the maximum number of items to be retrieved by a List operation.
-func WithPageSize(n int32) ListOption {
-	return func(options *ListOptions) {
-		options.PageSize = n
-	}
-}
-
-// WithPageNumber sets the page number to be retrieved by a List operation.
-func WithPageNumber(n int64) ListOption {
-	return func(options *ListOptions) {
-		options.PageNumber = n
-	}
-}
-
-// WithPageToken sets the cursor where the List operation should start/continue fetching.
-func WithPageToken(v string) ListOption {
-	return func(options *ListOptions) {
-		options.PageToken = v
-	}
 }
