@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "GD=\"$(git rev-parse --git-dir 2>/dev/null)\"; [ -z \"$GD\" ] && exit 0; CHANGES=\"$(git diff -- '*.go'; git diff --cached -- '*.go'; git status --porcelain -- '*.go')\"; [ -z \"$CHANGES\" ] && exit 0; HASH=\"$(printf '%s' \"$CHANGES\" | (sha256sum 2>/dev/null || shasum -a 256) | awk '{print $1}')\"; STATE=\"$GD/claude-go-style-review.hash\"; PREV=\"$(cat \"$STATE\" 2>/dev/null)\"; [ \"$HASH\" = \"$PREV\" ] && exit 0; printf '%s' \"$HASH\" > \"$STATE\"; jq -n --arg reason \"Go files changed (or changed further) since the last check — run the go-style-review skill (invoke /go-style-review) against docs/go-style-guide.md before finishing.\" '{decision:\"block\", reason:$reason}'",
+            "statusMessage": "Checking for unreviewed Go changes..."
+          }
+        ]
+      }
+    ]
+  }
+}
